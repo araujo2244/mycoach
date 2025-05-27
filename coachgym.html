@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Monitor de Sentadillas</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+  <style>
+    canvas { position: absolute; top: 0; left: 0; }
+    video { visibility: hidden; position: absolute; }
+    #feedback { font-size: 24px; font-weight: bold; margin-top: 480px; color: green; text-align: center; }
+  </style>
+</head>
+<body>
+  <video id="video" width="640" height="480" autoplay muted playsinline></video>
+  <canvas id="output" width="640" height="480"></canvas>
+  <div id="feedback">Cargando...</div>
+
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('output');
+    const canvasCtx = canvasElement.getContext('2d');
+    const feedback = document.getElementById('feedback');
+
+    function getAngle(A, B, C) {
+      const AB = { x: B.x - A.x, y: B.y - A.y };
+      const CB = { x: B.x - C.x, y: B.y - C.y };
+      const dot = AB.x * CB.x + AB.y * CB.y;
+      const magAB = Math.sqrt(AB.x**2 + AB.y**2);
+      const magCB = Math.sqrt(CB.x**2 + CB.y**2);
+      const angle = Math.acos(dot / (magAB * magCB));
+      return angle * (180 / Math.PI);
+    }
+
+    function onResults(results) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.poseLandmarks) {
+        drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+        drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
+
+        const leftHip = results.poseLandmarks[23];
+        const leftKnee = results.poseLandmarks[25];
+        const leftAnkle = results.poseLandmarks[27];
+
+        const angle = getAngle(leftHip, leftKnee, leftAnkle);
+
+        if (angle > 160) {
+          feedback.textContent = 'De pie';
+          feedback.style.color = 'black';
+        } else if (angle > 90 && angle <= 160) {
+          feedback.textContent = 'Buena sentadilla';
+          feedback.style.color = 'green';
+        } else {
+          feedback.textContent = 'Demasiado baja o mal ángulo';
+          feedback.style.color = 'red';
+        }
+      }
+
+      canvasCtx.restore();
+    }
+
+    const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    pose.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({image: videoElement});
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
+</body>
+</html>
